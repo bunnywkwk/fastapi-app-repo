@@ -10,14 +10,14 @@ pipeline {
     stages {
         stage('Lint & Unit Test') {
             steps {
-                echo "=== Running Linting and Unit Tests in Python 3.11 Container ==="
+                echo "=== Running Linting and Unit Tests on branch: ${env.BRANCH_NAME} ==="
                 sh '''
-                    docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "
-                        pip install --upgrade pip && \
-                        pip install -r requirements.txt && \
-                        flake8 app/ tests/ --max-line-length=120 && \
-                        pytest -v
-                    "
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                    flake8 app/ tests/ --max-line-length=120
+                    pytest -v
                 '''
             }
         }
