@@ -9,16 +9,15 @@ pipeline {
 
     stages {
         stage('Lint & Unit Test') {
-            agent {
-                docker { image 'python:3.11-slim' }
-            }
             steps {
                 echo "=== Running Linting and Unit Tests in Python 3.11 Container ==="
                 sh '''
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
-                    flake8 app/ tests/ --max-line-length=120
-                    pytest -v
+                    docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "
+                        pip install --upgrade pip && \
+                        pip install -r requirements.txt && \
+                        flake8 app/ tests/ --max-line-length=120 && \
+                        pytest -v
+                    "
                 '''
             }
         }
