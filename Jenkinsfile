@@ -2,10 +2,9 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_USER  = 'your-dockerhub-username'
         IMAGE_NAME       = 'fastapi-app'
         IMAGE_TAG        = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
-        GITOPS_REPO_URL  = 'git@github.com:your-user/gitops-infra-repo.git'
+        GITOPS_REPO_NAME = 'gitops-infra-repo'
     }
 
     stages {
@@ -23,26 +22,18 @@ pipeline {
             }
         }
 
-        stage('Build Container Image') {
+        stage('Build & Push Container Image') {
             when {
                 branch pattern: "^(main|staging)$", comparator: "REGEXP"
             }
             steps {
-                echo "=== Building Docker Image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ==="
-                sh "docker build -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ."
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            when {
-                branch pattern: "^(main|staging)$", comparator: "REGEXP"
-            }
-            steps {
-                echo "=== Pushing Image to Docker Hub ==="
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                echo "=== Building & Pushing Docker Image ==="
+                // Extracts username and token securely from Jenkins Vault!
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
-                        echo "$PASS" | docker login -u "$USER" --password-stdin
-                        docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker build -t ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG} .
+                        docker push ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}
                     '''
                 }
             }
@@ -53,22 +44,23 @@ pipeline {
                 branch pattern: "^(main|staging)$", comparator: "REGEXP"
             }
             steps {
-                echo "=== Programmatically updating gitops-infra-repo image tag ==="
-                withCredentials([sshUserPrivateKey(credentialsId: 'gitops-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                echo "=== Updating GitOps repo image tag via GitHub PAT ==="
+                withCredentials([usernamePassword(credentialsId: 'github-pat-credentials', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
                     sh '''
-                        export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no"
+                        git config --global user.name "Jenkins CI Bot"
+                        git config --global user.email "jenkins-ci@local.internal"
+                        
                         rm -rf temp-gitops-repo
-                        git clone ${GITOPS_REPO_URL} temp-gitops-repo
+                        git clone https://${GH_USER}:${GH_TOKEN}@github.com/${GH_USER}/${GITOPS_REPO_NAME}.git temp-gitops-repo
                         cd temp-gitops-repo
 
-                        # Update deployment image tag using sed
-                        sed -i "s|image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:.*|image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}|g" deployments/fastapi-deployment.yaml
+                        # Update deployment image tag dynamically
+                        sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${GH_USER}/${IMAGE_NAME}:${IMAGE_TAG}|g" deployments/fastapi-deployment.yaml
 
-                        git config user.name "Jenkins CI Bot"
-                        git config user.email "jenkins-ci@local.internal"
                         git add deployments/fastapi-deployment.yaml
                         git commit -m "ci: update ${IMAGE_NAME} image tag to ${IMAGE_TAG} [skip ci]" || echo "No changes to commit"
-                        git push origin ${BRANCH_NAME}
+                        git push https://${GH_USER}:${GH_TOKEN}@github.com/${GH_USER}/${GITOPS_REPO_NAME}.git main
+                        
                         cd ..
                         rm -rf temp-gitops-repo
                     '''
@@ -81,12 +73,6 @@ pipeline {
         always {
             echo "=== Pipeline execution finished on branch ${env.BRANCH_NAME} ==="
             cleanWs()
-        }
-        success {
-            echo "=== Pipeline completed successfully! ==="
-        }
-        failure {
-            echo "=== Pipeline failed! Check logs above for details. ==="
         }
     }
 }
