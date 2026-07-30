@@ -3,7 +3,8 @@ pipeline {
 
     environment {
         IMAGE_NAME       = 'fastapi-app'
-        IMAGE_TAG        = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
+        GIT_SHORT_SHA    = "${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}"
+        IMAGE_TAG        = "${env.BRANCH_NAME}-${GIT_SHORT_SHA}"
         GITOPS_REPO_NAME = 'gitops-infra-repo'
     }
 
@@ -27,7 +28,7 @@ pipeline {
                 branch pattern: '^(main|staging)$', comparator: 'REGEXP'
             }
             steps {
-                echo "=== Building & Pushing Docker Image ==="
+                echo "=== Building & Pushing Docker Image Tagged: ${IMAGE_TAG} ==="
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
@@ -43,7 +44,7 @@ pipeline {
                 branch pattern: '^(main|staging)$', comparator: 'REGEXP'
             }
             steps {
-                echo "=== Updating GitOps repo image tag via GitHub PAT ==="
+                echo "=== Updating GitOps repo image tag to ${IMAGE_TAG} ==="
                 withCredentials([usernamePassword(credentialsId: 'github-pat-credentials', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
                     sh '''
                         git config --global user.name "Jenkins CI Bot"
@@ -53,7 +54,7 @@ pipeline {
                         git clone https://${GH_USER}:${GH_TOKEN}@github.com/${GH_USER}/${GITOPS_REPO_NAME}.git temp-gitops-repo
                         cd temp-gitops-repo
 
-                        # Update deployment image tag dynamically
+                        # Update deployment image tag dynamically using sed
                         sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${GH_USER}/${IMAGE_NAME}:${IMAGE_TAG}|g" deployments/fastapi-deployment.yaml
 
                         git add deployments/fastapi-deployment.yaml
