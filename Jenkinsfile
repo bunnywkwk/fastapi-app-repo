@@ -24,11 +24,10 @@ pipeline {
 
         stage('Build & Push Container Image') {
             when {
-                branch pattern: "^(main|staging)$", comparator: "REGEXP"
+                branch pattern: '^(main|staging)$', comparator: 'REGEXP'
             }
             steps {
                 echo "=== Building & Pushing Docker Image ==="
-                // Extracts username and token securely from Jenkins Vault!
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
@@ -41,7 +40,7 @@ pipeline {
 
         stage('Update GitOps Repo') {
             when {
-                branch pattern: "^(main|staging)$", comparator: "REGEXP"
+                branch pattern: '^(main|staging)$', comparator: 'REGEXP'
             }
             steps {
                 echo "=== Updating GitOps repo image tag via GitHub PAT ==="
