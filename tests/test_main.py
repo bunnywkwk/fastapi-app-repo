@@ -9,7 +9,7 @@ def test_read_root():
     response = client.get("/")
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "healthy v2.0"
+    assert data["status"] == "healthy v3.0"
     assert "app_name" in data
 
 
