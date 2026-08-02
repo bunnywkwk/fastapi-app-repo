@@ -27,7 +27,7 @@ def read_root():
     return {
         "app_name": settings.APP_NAME,
         "environment": settings.ENVIRONMENT,
-        "status": "healthy v4.0"
+        "status": "healthy v5.0"
     }
 
 
