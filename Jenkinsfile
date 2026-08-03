@@ -4,7 +4,7 @@ pipeline {
     environment {
         IMAGE_NAME       = 'fastapi-app'
         GIT_SHORT_SHA    = "${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}"
-        IMAGE_TAG        = "${env.BRANCH_NAME}-${GIT_SHORT_SHA}"
+        IMAGE_TAG        = "${env.TAG_NAME ?: env.BRANCH_NAME + '-' + GIT_SHORT_SHA}"
         GITOPS_REPO_NAME = 'gitops-infra-repo'
     }
 
