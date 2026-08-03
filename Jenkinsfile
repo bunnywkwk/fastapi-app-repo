@@ -25,7 +25,11 @@ pipeline {
 
         stage('Build & Push Container Image') {
             when {
-                branch pattern: '^(main|staging)$', comparator: 'REGEXP'
+                anyOf {
+                    branch 'staging'
+                    branch 'main'
+                    buildingTag()
+                }
             }
             steps {
                 echo "=== Building & Pushing Docker Image Tagged: ${IMAGE_TAG} ==="
