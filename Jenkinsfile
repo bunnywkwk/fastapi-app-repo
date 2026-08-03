@@ -25,7 +25,11 @@ pipeline {
 
         stage('Build & Push Container Image') {
             when {
-                branch pattern: '^(main|staging)$', comparator: 'REGEXP'
+                anyOf {
+                    branch 'staging'
+                    branch 'main'
+                    buildingTag()
+                }
             }
             steps {
                 echo "=== Building & Pushing Docker Image Tagged: ${IMAGE_TAG} ==="
@@ -41,10 +45,13 @@ pipeline {
 
         stage('Update GitOps Repo') {
             when {
-                branch pattern: '^(main|staging)$', comparator: 'REGEXP'
+                anyOf {
+                    branch 'staging'
+                    buildingTag()
+                }
             }
             steps {
-                echo "=== Updating GitOps repo image tag to ${IMAGE_TAG} ==="
+                echo "=== Updating GitOps repo image tag ==="
                 withCredentials([usernamePassword(credentialsId: 'github-pat-credentials', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
                     sh '''
                         git config --global user.name "Jenkins CI Bot"
@@ -54,12 +61,27 @@ pipeline {
                         git clone https://${GH_USER}:${GH_TOKEN}@github.com/${GH_USER}/${GITOPS_REPO_NAME}.git temp-gitops-repo
                         cd temp-gitops-repo
 
-                        # Update deployment image tag dynamically using sed
-                        sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${GH_USER}/${IMAGE_NAME}:${IMAGE_TAG}|g" deployments/fastapi-deployment.yaml
+                        # 1. Determine if this is a Tag (Prod) or a Branch (Staging)
+                        if [ -n "${TAG_NAME}" ]; then
+                            echo "Detected Git Tag: ${TAG_NAME}. Updating PRODUCTION branch."
+                            TARGET_BRANCH="main"
+                            IMAGE_TO_SET="${TAG_NAME}"
+                        else
+                            echo "Detected Branch: ${BRANCH_NAME}. Updating STAGING branch."
+                            TARGET_BRANCH="staging"
+                            IMAGE_TO_SET="${IMAGE_TAG}"
+                        fi
 
+                        # 2. Checkout the correct target branch from GitOps Repo
+                        git checkout $TARGET_BRANCH
+
+                        # 3. Update the deployment image tag dynamically
+                        sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${GH_USER}/${IMAGE_NAME}:${IMAGE_TO_SET}|g" deployments/fastapi-deployment.yaml
+
+                        # 4. Commit and push back to that specific branch
                         git add deployments/fastapi-deployment.yaml
-                        git commit -m "ci: update ${IMAGE_NAME} image tag to ${IMAGE_TAG} [skip ci]" || echo "No changes to commit"
-                        git push https://${GH_USER}:${GH_TOKEN}@github.com/${GH_USER}/${GITOPS_REPO_NAME}.git main
+                        git commit -m "ci: update ${IMAGE_NAME} image to ${IMAGE_TO_SET} [skip ci]" || echo "No changes to commit"
+                        git push https://${GH_USER}:${GH_TOKEN}@github.com/${GH_USER}/${GITOPS_REPO_NAME}.git $TARGET_BRANCH
                         
                         cd ..
                         rm -rf temp-gitops-repo
